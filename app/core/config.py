@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     DB_NAME: str = None
     DB_USER: str = None
     DB_PASSWORD: str = None
+    ACCESS_EXPIRE_MINUTES: int = None
+    REFRESH_EXPIRE_DAYS: int = None
+    ALGORITHM: str = None
+    SECRET_KEY:str = None
     MODE: str = None
 
     model_config = SettingsConfigDict(

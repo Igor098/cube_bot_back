@@ -10,7 +10,7 @@ from alembic import context
 from app.db import Base
 from app.core import settings
 from app.models.program import Program
-from app.models.user import User
+from app.models.user import User, UserSession
 
 DATABASE_URL = settings.get_database_url()
 

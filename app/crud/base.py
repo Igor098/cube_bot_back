@@ -1,7 +1,7 @@
 from typing import TypeVar, Type
 
 from pydantic import BaseModel
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update as sqlalchemy_update, delete as sqlalchemy_delete
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -70,6 +70,46 @@ class BaseDAO:
         except SQLAlchemyError as e:
             logger.error(f"Ошибка при добавлении записи: {e}")
             raise
+
+    async def update(self, filters: BaseModel, values: BaseModel):
+        filter_dict = filters.model_dump(exclude_unset=True)
+        values_dict = values.model_dump(exclude_unset=True)
+        logger.info(
+            f"Обновление записей {self.model.__name__} по фильтру: {filter_dict} с параметрами: {values_dict}")
+        try:
+            query = (
+                sqlalchemy_update(self.model)
+                .where(*[getattr(self.model, k) == v for k, v in filter_dict.items()])
+                .values(**values_dict)
+                .execution_options(synchronize_session="fetch")
+            )
+            result = await self._session.execute(query)
+            record = result.scalar_one_or_none()
+            logger.info(f"Обновлено {result.rowcount} записей.")
+            logger.info(f"Данные: {record}")
+            await self._session.flush()
+            return record
+        except SQLAlchemyError as e:
+            logger.error(f"Ошибка при обновлении записей: {e}")
+            raise
+
+    async def delete(self, filters: BaseModel):
+        filter_dict = filters.model_dump(exclude_unset=True)
+        logger.info(f"Удаление записей {self.model.__name__} по фильтру: {filter_dict}")
+        if not filter_dict:
+            logger.error("Нужен хотя бы один фильтр для удаления.")
+            raise ValueError("Нужен хотя бы один фильтр для удаления.")
+        try:
+            query = sqlalchemy_delete(self.model).filter_by(**filter_dict)
+            result = await self._session.execute(query)
+            logger.info(f"Удалено {result.rowcount} записей.")
+            logger.info(f"Данные: {result}")
+            await self._session.flush()
+            return result
+        except SQLAlchemyError as e:
+            logger.error(f"Ошибка при удалении записей: {e}")
+            raise
+
 
     async def count(self, filters: BaseModel | None = None):
         filter_dict = filters.model_dump(exclude_unset=True) if filters else {}
