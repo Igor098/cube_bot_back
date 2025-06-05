@@ -40,11 +40,32 @@ class UserDeleteModel(UserModel):
     is_deleted: StrictBool = Field(title="Пользователь удален?", description="Поле для проверки удаления пользователя")
 
 
-class UserSessionModel(BaseModel):
+class UserSessionCreateModel(BaseModel):
     id: str = Field()
     user_id: int = Field()
     user_agent: str = Field()
-    created_at: datetime
-    expires_at: datetime
+    created_at: datetime = Field()
+    expires_at: datetime = Field()
+    is_active: StrictBool = Field()
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class UserSessionModel(BaseModel):
+    user_agent: Optional[str] = Field(default=None)
+    created_at: Optional[datetime] = Field(default=None)
+    expires_at: Optional[datetime] = Field(default=None)
+    is_active: Optional[StrictBool] = Field(default=None)
+
+    model_config = ConfigDict(extra='forbid')
+
+
+class UserSessionFilterModel(BaseModel):
+    user_id: int = Field()
+    user_agent: str = Field()
+    is_active: StrictBool = Field()
+
+
+class UserSessionUpdateFilterModel(BaseModel):
+    id: str = Field()
+    is_active: StrictBool = Field()

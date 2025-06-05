@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timezone, time
 
 from fastapi import Depends, Cookie
@@ -9,12 +10,12 @@ from jose import jwt, ExpiredSignatureError, JWTError
 
 from app.core import settings
 from app.crud.user import UserDAO, UserSessionDAO
-from app.depends.dao_dep import get_session_without_commit
+from app.depends.dao_dep import get_session_without_commit, get_session_with_commit
 from app.models.user import User, UserSession
-from app.schemas.user import UserSessionModel
+from app.schemas.user import UserSessionCreateModel, UserSessionUpdateFilterModel, UserSessionModel
 from app.utils.exceptions import TokenNoFound, TokenExpiredException, NoJwtException, UserNotFoundException, \
     ForbiddenException, InvalidTokenFormatException, SessionNotValidException
-from app.utils.security import create_refresh_token, create_access_token, set_tokens_as_cookies
+from app.utils.security import create_refresh_token, create_access_token, set_tokens_as_cookies, create_session
 
 
 def _get_token_from_request(request: Request, token_name: str) -> str:
@@ -52,10 +53,12 @@ async def verify_token_and_session(
     except ExpiredSignatureError:
         raise TokenExpiredException
     except JWTError:
+        logger.error(f"payload error: payload: {payload}")
         raise NoJwtException
 
     # Проверяем тип токена
     if payload.get("type") != token_type:
+        logger.error(f"payload type error: {payload}, type: {token_type}")
         raise NoJwtException
 
     # Проверяем срок жизни
@@ -66,6 +69,7 @@ async def verify_token_and_session(
     telegram_id = payload.get("sub")
     session_id = payload.get("sid")
     if not telegram_id or not session_id:
+        logger.error(f"tg or session error: tg: {telegram_id}, session: {session_id}")
         raise NoJwtException
 
     # Проверяем пользователя
@@ -84,7 +88,7 @@ async def verify_token_and_session(
 async def refresh_tokens(
     response: Response,
     request: Request,
-    session: AsyncSession = Depends(get_session_without_commit),
+    session: AsyncSession,
 ):
     refresh_token = request.cookies.get('refresh_token')
     if not refresh_token:
@@ -103,7 +107,7 @@ async def refresh_tokens(
 
     user_session = await UserSessionDAO(session).find_one_or_none_by_id(session_id)
     logger.info(f"user >>> {user_session.user}")
-    logger.info(UserSessionModel.model_validate(user_session))
+    logger.info(UserSessionCreateModel.model_validate(user_session))
     exp = user_session.expires_at
     now = datetime.now(timezone.utc)
 
@@ -121,28 +125,57 @@ async def refresh_tokens(
     ):
         raise SessionNotValidException
 
-    # Всё прошло — генерим новую пару токенов
-    access_token = await create_access_token(telegram_id, session_id)
-    new_refresh_token = await create_refresh_token(telegram_id, session_id)
+    await UserSessionDAO(session).update(
+        filters=UserSessionUpdateFilterModel(
+            id=session_id,
+            is_active=True
+        ),
+        values=UserSessionModel(is_active=False),
+    )
 
-    await set_tokens_as_cookies(response, access_token, new_refresh_token)
-    response.headers["X-Access-Token"] = access_token
-    response.headers["X-Session-ID"] = session_id
+    new_session_id = str(uuid.uuid4())
+    user_agent = request.headers.get("User-Agent")
+
+    await create_session(
+        session_id=new_session_id,
+        user_agent=user_agent,
+        user_id=user_session.user_id,
+        session=session
+    )
+
+    # Всё прошло — генерим новую пару токенов
+    new_access_token = await create_access_token(telegram_id, new_session_id)
+    new_refresh_token = await create_refresh_token(telegram_id, new_session_id)
+
+    await set_tokens_as_cookies(response, new_access_token, new_refresh_token)
+    response.headers["X-Access-Token"] = new_access_token
+    response.headers["X-Refresh-Token"] = new_refresh_token
+    response.headers["X-Session-ID"] = new_session_id
 
     return {"message": "Tokens refreshed successfully"}
 
 
 async def logout(
-    token: str = Depends(get_access_token),
-    session: AsyncSession = Depends(get_session_without_commit),
-    response: Response = None
+    response: Response,
+    token: str,
+    session: AsyncSession
 ):
+    logger.info(f"logout >>> {token}")
     payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
     session_id = payload.get("sid")
-    user_session = await session.get(UserSession, session_id)
+
+    user_session = await UserSessionDAO(session).find_one_or_none_by_id(data_id=session_id)
     if user_session:
-        user_session.is_active = False
-        await session.commit()
+        await UserSessionDAO(session=session).update(
+            filters=UserSessionUpdateFilterModel(
+                id=session_id,
+                is_active=True
+            ),
+            values=UserSessionModel(is_active=False),
+        )
+
     if response:
         response.delete_cookie("access_token")
         response.delete_cookie("refresh_token")
+
+    return {"logout": True}
