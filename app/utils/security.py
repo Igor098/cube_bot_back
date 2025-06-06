@@ -2,23 +2,29 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from jose import jwt
+from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.requests import Request
 from fastapi.responses import Response
 
-from app.models.user import User, UserSession
+from app.constants.enums import TokenType
+from app.models.user import User
 from app.core import settings
 from app.crud.user import UserSessionDAO
-from app.schemas.user import UserSessionCreateModel, UserSessionFilterModel, UserSessionModel
+from app.schemas.user import UserSessionCreateModel, UserSessionFilterModel
 
 
-def create_jwt_token(telegram_id: int, session_id: str, expires_delta: timedelta, token_type: str) -> str:
+def create_jwt_token(telegram_id: int, session_id: str, expires_delta: timedelta, token_type: TokenType) -> str:
     expire = datetime.now(tz=timezone.utc) + expires_delta
+    logger.info(f"Token type: {token_type.value}")
     payload = {
         "sub": str(telegram_id),
         "sid": session_id,
+        "iss": settings.JWT_ISSUER,
+        "aud": settings.JWT_AUDIENCE,
         "exp": int(expire.timestamp()),
-        "type": token_type
+        "iat": int(datetime.now().timestamp()),
+        "type": token_type.value
     }
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
@@ -28,7 +34,7 @@ async def create_access_token(telegram_id: int, session_id: str) -> str:
         telegram_id,
         session_id=session_id,
         expires_delta=timedelta(days=settings.ACCESS_EXPIRE_MINUTES),
-        token_type="access"
+        token_type=TokenType.ACCESS_TOKEN
     )
 
 
@@ -37,7 +43,7 @@ async def create_refresh_token(telegram_id: int, session_id: str) -> str:
         telegram_id,
         session_id=session_id,
         expires_delta=timedelta(days=settings.REFRESH_EXPIRE_DAYS),
-        token_type="refresh"
+        token_type=TokenType.REFRESH_TOKEN
     )
 
 

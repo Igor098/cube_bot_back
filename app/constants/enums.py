@@ -5,3 +5,7 @@ class Age(Enum):
     PRE_TEEN = "8 - 12 лет"
     TEENAGER = "13 - 18 лет"
 
+
+class TokenType(Enum):
+    ACCESS_TOKEN = "access-token"
+    REFRESH_TOKEN = "refresh-token"

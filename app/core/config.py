@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     REFRESH_EXPIRE_DAYS: int = None
     ALGORITHM: str = None
     SECRET_KEY:str = None
+    JWT_ISSUER: str = None
+    JWT_AUDIENCE: str = None
+    JWT_CLOCK_SKEW_SECONDS: int = None
     MODE: str = None
 
     model_config = SettingsConfigDict(

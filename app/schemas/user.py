@@ -51,11 +51,8 @@ class UserSessionCreateModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class UserSessionModel(BaseModel):
-    user_agent: Optional[str] = Field(default=None)
-    created_at: Optional[datetime] = Field(default=None)
-    expires_at: Optional[datetime] = Field(default=None)
-    is_active: Optional[StrictBool] = Field(default=None)
+class UserSessionUpdateModel(BaseModel):
+    is_active: StrictBool = Field()
 
     model_config = ConfigDict(extra='forbid')
 
